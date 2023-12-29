@@ -1,0 +1,66 @@
+name: Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Select app'
+        required: true
+        default: 't66y'
+        type: choice
+        options:
+        - T66y
+        - Yi
+        - SNMusic
+      link:
+        description: 'App build link'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Resign
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@master
+
+      - name: Ruby setup
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2
+          bundler-cache: true
+
+      - name: Clone certs
+        run: |      
+          git clone https://damoncoo:${{ secrets.PAT }}@github.com/damoncoo/certs.git \
+            --depth 1 \
+            --branch master
+          pushd certs/ios && sh install.sh && popd
+
+      - name: Clone resign repo
+        run: |      
+          git clone https://damoncoo:${{ secrets.PAT }}@github.com/damoncoo/resign.git \
+            --depth 1 \
+            --branch master
+
+      - name: Start job
+        run: |
+          pushd resign && npm install
+          cp -r ../certs/mapping/mp.json mp.json
+
+          name=${{ inputs.app }}
+          app=$(jq --arg name $name '.[]|select(.name==$name).app' -r mp.json)
+          mp=$(jq --arg name $name '.[]|select(.name==$name).mp' -r mp.json)
+          cs=$(jq --arg name $name '.[]|select(.name==$name).codesigning' -r mp.json)
+
+          echo '{}' | jq --arg app "$app" \
+            --arg token "${{ secrets.APPCENTER_TOKEN }}" \
+            --arg group Collaborators \
+            '.app = $app | .token = $token | .group = $group ' > ../appcenter.json
+
+          node bin/resign-local.js -i "${{ inputs.link }}" -m "../${mp}" -s "${cs}"
+          popd
+
+      - name: Upload to appcenter
+        run: bash bin/appcenter.sh resign/temp/app.ipa

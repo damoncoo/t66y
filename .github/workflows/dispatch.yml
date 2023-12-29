@@ -1,0 +1,49 @@
+name: Dispatch
+
+on:
+  repository_dispatch:
+    types:
+      - resign
+
+jobs:
+  build:
+    name: Resign
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@master
+
+      - name: Ruby setup
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2
+          bundler-cache: true
+
+      - name: Install dependency
+        run: |
+          gem install bundler:2.4.10
+          npm install
+
+      - name: Clone certs
+        run: |      
+          git clone https://damoncoo:${{ secrets.PAT }}@github.com/damoncoo/certs.git \
+            --depth 1 \
+            --branch master
+          pushd certs/ios && sh install.sh && popd
+
+      - name: Clone resign repo
+        run: |      
+          git clone https://damoncoo:${{ secrets.PAT }}@github.com/damoncoo/resign.git \
+            --depth 1 \
+            --branch master
+          cd resign && npm install
+
+      - name: Start job
+        run: |
+          node bin/resign-local.js \
+            -i "${{ github.event.client_payload.ipa }}" \
+            -m "${{ github.event.client_payload.mobileprovision }}" \
+            -s "${{ github.event.client_payload.code_signing_identity }}" \
+            -p "${{ github.event.client_payload.password }}"
+          
+      
